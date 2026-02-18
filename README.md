@@ -1,303 +1,231 @@
-# 디지털 트윈 설문조사 & 인터뷰 시스템
+# 🧠 LLM Customer Digital Twin
 
 > **Built:** October 2025
 
-Hugging Face의 [Twin-2K-500](https://huggingface.co/datasets/LLM-Digital-Twin/Twin-2K-500) 데이터셋을 활용한 AI 기반 설문조사 및 인터뷰 시스템입니다.
+LLM 기반 디지털 트윈 시스템 — 실제 사람 데이터셋으로 가상 인터뷰이를 생성하고, 설문조사·심층 인터뷰를 자동화합니다.
 
-## 🎯 주요 기능
+---
 
-### 1. **응답자 선택 시스템**
-- 전체 선택
-- 무작위 샘플링
-- 조건 기반 필터링
-- ID 직접 선택
+## 1. Overview
 
-### 2. **설문조사 시스템**
-- 1-7점 리커트 척도 응답
-- 구조화된 질문 관리
-- 자동화된 응답 수집
-- 실시간 통계 분석
+기존 사용자 리서치 방법론의 한계(비용, 시간, 샘플 편향)를 극복하기 위해, Hugging Face의 [Twin-2K-500](https://huggingface.co/datasets/LLM-Digital-Twin/Twin-2K-500) 데이터셋을 활용해 2,000명 이상의 실제 인물 프로필을 LLM에 주입하여 가상 인터뷰이로 활용합니다.
 
-### 3. **인터뷰 시스템**
-- 개방형 질문 응답
-- 배치 모드: 대량 인터뷰 자동 진행
-- 대화형 모드: 후속 질문 가능
-- 인터뷰록 형식 저장
+**핵심 가치:**
+- 실제 설문 전 질문 검증 및 응답 분포 예측
+- 다양한 페르소나의 반응을 대규모로 빠르게 수집
+- 정성 연구(인터뷰)를 정량적으로 확장
 
-### 4. **결과 관리**
-- JSON, CSV, Excel 형식 저장
-- 자동 통계 분석
-- 인터뷰록 생성
-- 데이터 시각화
+**데이터셋:** 2,000명+ 실제 인물 프로필, 각 인물의 배경·성격·가치관 포함
 
-## 📋 요구사항
+---
 
-- Python 3.8+
-- OpenAI API 키
-
-## 🚀 설치 방법
-
-1. **저장소 클론 및 이동**
-```bash
-cd Digital_Twin_US
-```
-
-2. **가상환경 생성 및 활성화** (권장)
-```bash
-python -m venv venv
-
-# Windows
-venv\Scripts\activate
-
-# macOS/Linux
-source venv/bin/activate
-```
-
-3. **패키지 설치**
-```bash
-pip install -r requirements.txt
-```
-
-4. **환경 변수 설정**
-
-`.env` 파일을 생성하고 OpenAI API 키를 설정하세요:
-
-```bash
-OPENAI_API_KEY=your_api_key_here
-```
-
-## 💻 사용 방법
-
-### GUI 실행 (권장)
-
-Streamlit 기반 웹 인터페이스를 실행합니다:
-
-```bash
-streamlit run app.py
-```
-
-브라우저가 자동으로 열리며 `http://localhost:8501`에서 접속할 수 있습니다.
-
-### CLI 실행
-
-터미널 기반 인터페이스를 사용하려면:
-
-```bash
-python main.py
-```
-
-### 사용 흐름
-
-#### GUI 모드 (Streamlit)
-
-1. **홈페이지**
-   - 시스템이 자동으로 초기화됩니다
-   - API 키 설정 및 데이터셋 로드
-   - 대시보드에서 전체 현황 확인
-
-2. **응답자 선택** (페이지 1)
-   - 4가지 방식: 무작위/필터링/전체/ID 선택
-   - 실시간 미리보기 및 필터링
-   - 선택된 응답자 확인
-
-3. **설문조사** (페이지 2)
-   - 질문 작성 또는 템플릿 로드
-   - 실시간 진행 상황 표시
-   - 즉시 결과 확인 및 차트 생성
-
-4. **인터뷰** (페이지 3)
-   - 개방형 질문 작성
-   - 배치/미리보기 모드 선택
-   - 실시간 응답 표시
-
-5. **결과 분석** (페이지 4)
-   - 대화형 차트 및 통계
-   - 다양한 형식으로 다운로드
-   - 통합 내보내기
-
-#### CLI 모드
-
-1. **시스템 초기화** - 자동 데이터셋 로드
-2. **응답자 선택** - 대화형 선택 마법사
-3. **설문/인터뷰 진행** - 단계별 진행
-4. **결과 저장** - 자동 저장 및 분석
-
-## 📁 프로젝트 구조
+## 2. Architecture
 
 ```
-Digital_Twin_US/
-├── src/
-│   ├── __init__.py
-│   ├── dataset_loader.py      # 데이터셋 로딩 및 관리
-│   ├── persona_selector.py    # 응답자 선택 인터페이스 (CLI)
-│   ├── ai_agent.py            # ChatGPT API 연동
-│   ├── survey_system.py       # 설문조사 시스템
-│   ├── interview_system.py    # 인터뷰 시스템
-│   └── results_manager.py     # 결과 저장 및 분석
-├── pages/                     # Streamlit 페이지
-│   ├── 1_📋_응답자_선택.py
-│   ├── 2_📊_설문조사.py
-│   ├── 3_💬_인터뷰.py
-│   └── 4_📊_결과_분석.py
-├── examples/                  # 예제 템플릿
-│   ├── survey_template.json
-│   └── interview_guide.json
-├── .streamlit/
-│   └── config.toml            # Streamlit 설정
-├── app.py                     # Streamlit GUI 메인
-├── main.py                    # CLI 메인 프로그램
-├── requirements.txt           # 패키지 의존성
-├── .env                       # 환경 변수 (생성 필요)
-├── .gitignore
-└── README.md
+┌─────────────────────────────────────────────────────┐
+│                  Streamlit Web UI                    │
+│  Page 1: 응답자 선택  │  Page 2: 설문조사            │
+│  Page 3: 인터뷰       │  Page 4: 결과 분석           │
+└────────────┬────────────────────────────────────────┘
+             │
+┌────────────▼────────────────────────────────────────┐
+│              Core Application Layer                  │
+│                                                      │
+│  DatasetLoader ──► PersonaSelector                   │
+│       │                   │                          │
+│       ▼                   ▼                          │
+│  Twin-2K-500 ──► AIAgent (GPT-4o-mini)               │
+│                      │                               │
+│          ┌───────────┴───────────┐                   │
+│          ▼                       ▼                   │
+│    SurveySystem          InterviewSystem              │
+│    (Likert 1-7)          (Open-ended Q&A)             │
+│          │                       │                   │
+│          └───────────┬───────────┘                   │
+│                      ▼                               │
+│               ResultsManager                         │
+│         (JSON / CSV / Excel / 인터뷰록)               │
+└─────────────────────────────────────────────────────┘
 ```
 
-## 📊 결과 파일 형식
+**데이터 흐름:**
+1. `DatasetLoader` — Hugging Face에서 Twin-2K-500 로드
+2. `PersonaSelector` — 필터링/무작위/ID 기반 응답자 선택
+3. `AIAgent` — 선택된 페르소나 프로필을 system prompt에 주입
+4. `SurveySystem` / `InterviewSystem` — 질문 배치 처리 및 응답 수집
+5. `ResultsManager` — 다중 포맷 저장 및 통계 분석
 
-### 설문조사 결과
-- `{survey_title}_{timestamp}.json` - 원본 응답 데이터
-- `{survey_title}_{timestamp}.csv` - 표 형식 데이터
-- `{survey_title}_{timestamp}_summary.txt` - 통계 요약
+---
 
-### 인터뷰 결과
-- `{interview_title}_{timestamp}.json` - 원본 인터뷰 데이터
-- `{interview_title}_{timestamp}.csv` - 표 형식 데이터
-- `{interview_title}_{timestamp}_transcript.txt` - 인터뷰록
+## 3. Tech Stack
 
-### Excel 통합 파일
-- `results_{timestamp}.xlsx` - 설문조사와 인터뷰 결과를 시트별로 저장
+| 범주 | 기술 |
+|------|------|
+| **LLM** | OpenAI GPT-4o-mini |
+| **Frontend** | Streamlit |
+| **Data** | Hugging Face Datasets (Twin-2K-500) |
+| **Analysis** | Pandas, NumPy, Plotly |
+| **Export** | openpyxl (Excel), JSON, CSV |
+| **Config** | python-dotenv |
+| **Language** | Python 3.8+ |
 
-## 🔧 고급 사용법
+---
 
-### 설문조사 템플릿 사용
+## 4. Core Logic
 
-설문조사 템플릿을 JSON 파일로 미리 작성할 수 있습니다:
+### 페르소나 주입 방식
 
-```json
-{
-  "title": "기술 수용도 조사",
-  "description": "AI 기술에 대한 태도 조사",
-  "questions": [
-    {
-      "question_id": "Q1",
-      "text": "나는 AI 기술이 사회에 긍정적인 영향을 미칠 것이라고 생각한다.",
-      "scale_description": "1(전혀 동의하지 않음) ~ 7(매우 동의함)",
-      "category": "긍정적 태도"
-    },
-    {
-      "question_id": "Q2",
-      "text": "나는 AI 기술 사용에 대해 우려를 느낀다.",
-      "scale_description": "1(전혀 동의하지 않음) ~ 7(매우 동의함)",
-      "category": "부정적 태도"
-    }
-  ]
-}
-```
-
-### 인터뷰 가이드 작성
-
-```json
-{
-  "title": "AI 경험 인터뷰",
-  "description": "AI 기술 사용 경험에 대한 심층 인터뷰",
-  "questions": [
-    {
-      "question_id": "IQ1",
-      "text": "AI 기술을 처음 접했을 때의 경험을 말씀해 주세요.",
-      "category": "첫 경험"
-    },
-    {
-      "question_id": "IQ2",
-      "text": "현재 일상에서 AI 기술을 어떻게 활용하고 있나요?",
-      "category": "현재 사용",
-      "context": "구체적인 예시를 들어주세요."
-    }
-  ]
-}
-```
-
-### 프로그래밍 방식 사용
-
-시스템의 각 모듈을 Python 코드에서 직접 사용할 수 있습니다:
+각 응답자의 프로필을 LLM system prompt에 직접 삽입하여, LLM이 해당 인물처럼 응답하도록 유도합니다:
 
 ```python
 from src.dataset_loader import DatasetLoader
 from src.ai_agent import AIAgent
 from src.survey_system import SurveySystem
 
-# 데이터셋 로드
 loader = DatasetLoader()
 loader.load()
-
-# 응답자 선택
 personas = loader.get_random_sample(n=10)
 
-# AI 에이전트 초기화
-agent = AIAgent()
-
-# 설문조사 생성 및 진행
+agent = AIAgent()  # GPT-4o-mini
 survey_system = SurveySystem(agent)
-survey = survey_system.Survey("테스트 설문", "설명")
-survey.add_question("테스트 질문입니다.")
+survey = survey_system.Survey("기술 수용도 조사", "AI에 대한 태도 조사")
+survey.add_question("AI 기술이 사회에 긍정적 영향을 미칠 것이라고 생각합니까?")
 
 responses = survey_system.conduct_survey(personas, survey)
 ```
 
-## ⚙️ 설정
+### 응답자 선택 모드 (4가지)
+- **전체 선택**: 전체 데이터셋 대상
+- **무작위 샘플링**: n명 랜덤 추출
+- **조건 기반 필터링**: 나이, 직업 등 속성 필터
+- **ID 직접 선택**: 특정 인물 지정
 
-### API 호출 지연 시간
+### 인터뷰 모드 (2가지)
+- **배치 모드**: 대량 인터뷰 자동 진행, 결과 일괄 저장
+- **대화형 모드**: 응답에 따른 후속 질문 가능
 
-대량 응답 수집 시 API 레이트 리밋을 피하기 위해 지연 시간을 조정할 수 있습니다:
-- 기본값: 0.5초
-- 권장: 0.3~1.0초
-
-### 모델 선택
-
-`src/ai_agent.py`에서 사용할 OpenAI 모델을 변경할 수 있습니다:
-
-```python
-self.model = "gpt-4o-mini"  # 기본값: 비용 효율적
-# self.model = "gpt-4o"      # 고품질 응답
-```
-
-## 💡 활용 예시
-
-### 1. 사용자 연구
-- 신제품/서비스에 대한 가상 사용자 피드백 수집
-- 다양한 페르소나의 반응 예측
-
-### 2. 설문조사 사전 테스트
-- 실제 설문조사 전 질문 검증
-- 응답 분포 예측
-
-### 3. 정성 연구
-- 대규모 가상 인터뷰 수행
-- 다양한 관점과 의견 수집
-
-### 4. 교육 및 연구
-- AI 에이전트 행동 연구
-- 페르소나 기반 시뮬레이션
-
-## 🔒 보안 주의사항
-
-- `.env` 파일을 절대 공개 저장소에 커밋하지 마세요
-- `.gitignore`에 `.env`가 포함되어 있는지 확인하세요
-- API 키를 코드에 직접 하드코딩하지 마세요
-
-## 📝 라이선스
-
-이 프로젝트는 교육 및 연구 목적으로 제작되었습니다.
-
-## 🙏 감사의 말
-
-- [Hugging Face](https://huggingface.co/) - Twin-2K-500 데이터셋 제공
-- [OpenAI](https://openai.com/) - GPT API 제공
-
-## 📮 문의
-
-문제가 발생하거나 개선 제안이 있으시면 이슈를 생성해주세요.
+### 응답 생성 메커니즘
+- 기본 API 호출 딜레이: 0.5초 (레이트 리밋 방지)
+- 모델: `gpt-4o-mini` (비용 효율) / `gpt-4o` (고품질) 선택 가능
+- 설문: 1-7점 리커트 척도 구조화 응답
+- 인터뷰: 개방형 자유 응답
 
 ---
 
-**Happy Researching! 🎉**
+## 5. Evaluation
 
+| 항목 | 내용 |
+|------|------|
+| **Persona Fidelity** | Twin-2K-500 인물 속성(나이·직업·가치관)과 LLM 응답 간 일관성 — 속성 키워드 매칭률로 정성 평가 |
+| **Response Validity** | 리커트 척도 응답이 1-7 범위를 벗어나는 비율 측정 (형식 준수율) |
+| **Coverage** | 설문/인터뷰 완료율 — 네트워크 오류·API 실패로 인한 누락 응답 비율 |
+| **Future Improvements** | 실제 설문 결과와 LLM 시뮬레이션 결과 간 분포 비교 (Ground-truth validation), 페르소나 충실도 자동 채점 도입 검토 |
+
+---
+
+## 6. Production Considerations
+
+| 항목 | 내용 |
+|------|------|
+| **Rate Limit** | API 호출 간 0.5초 딜레이 기본 적용, 대규모 배치 시 조정 권장 |
+| **Cost Control** | `gpt-4o-mini` 선택으로 비용 최소화; 대량 인터뷰 시 토큰 사용량 모니터링 필요 |
+| **Auth Security** | 관리자/사용자 자격증명은 `.env`의 `AUTH_USER_ID`, `AUTH_USER_PW`, `AUTH_ADMIN_ID`, `AUTH_ADMIN_PW`로 관리 (하드코딩 금지) |
+| **Data Privacy** | Twin-2K-500은 공개 연구 데이터셋이나, 추가 개인 데이터 결합 시 개인정보 처리 정책 검토 필요 |
+| **Scalability** | 현재 in-memory 처리; 2,000명 이상 대규모 배치는 청크 분할 처리 권장 |
+| **Output Storage** | JSON/CSV/Excel 결과 파일은 `.gitignore`로 제외 — 민감 응답 데이터 공개 방지 |
+
+---
+
+## 7. Deployment
+
+### 로컬 실행
+
+```bash
+# 1. 저장소 클론
+git clone https://github.com/pynoodle/llm-customer-digital-twin.git
+cd llm-customer-digital-twin
+
+# 2. 가상환경 생성 및 활성화
+python -m venv venv
+# Windows
+venv\Scripts\activate
+# macOS/Linux
+source venv/bin/activate
+
+# 3. 의존성 설치
+pip install -r requirements.txt
+
+# 4. 환경 변수 설정
+cp .env.example .env
+# .env 파일에 OPENAI_API_KEY 및 AUTH 정보 입력
+
+# 5. Streamlit 앱 실행
+streamlit run app.py
+# → http://localhost:8501
+```
+
+### 환경 변수 (.env)
+
+```bash
+OPENAI_API_KEY=your_api_key_here
+AUTH_USER_ID=your_user_id
+AUTH_USER_PW=your_user_password
+AUTH_ADMIN_ID=your_admin_id
+AUTH_ADMIN_PW=your_admin_password
+```
+
+### CLI 실행
+
+```bash
+python main.py
+```
+
+### 프로젝트 구조
+
+```
+llm-customer-digital-twin/
+├── src/
+│   ├── dataset_loader.py      # Twin-2K-500 로딩 및 관리
+│   ├── persona_selector.py    # 응답자 선택 인터페이스 (CLI)
+│   ├── ai_agent.py            # GPT API 연동
+│   ├── survey_system.py       # 설문조사 시스템
+│   ├── interview_system.py    # 인터뷰 시스템
+│   └── results_manager.py     # 결과 저장 및 분석
+├── pages/                     # Streamlit 멀티페이지
+│   ├── 1_📋_응답자_선택.py
+│   ├── 2_📊_설문조사.py
+│   ├── 3_💬_인터뷰.py
+│   └── 4_📊_결과_분석.py
+├── examples/                  # 템플릿 예제
+│   ├── survey_template.json
+│   └── interview_guide.json
+├── app.py                     # Streamlit GUI 메인
+├── main.py                    # CLI 메인
+├── requirements.txt
+├── .env.example
+├── .gitignore
+└── README.md
+```
+
+---
+
+## 8. Lessons Learned
+
+**LLM as Survey Respondent의 한계와 가능성**
+- LLM은 페르소나 프로필이 구체적일수록(나이, 직업, 가치관 명시) 일관된 응답을 생성함 — 프로필 품질이 시뮬레이션 품질을 결정
+- 리커트 척도에서 LLM은 중앙값(4점) 쏠림 경향이 있어, 극단값 분포는 실제 인간 응답과 다를 수 있음
+
+**배치 처리 설계**
+- 대량 인터뷰 시 단순 for-loop은 레이트 리밋에 취약 — 딜레이와 에러 핸들링을 처음부터 설계에 포함해야 함
+- 배치 완료 전 중단 시 재시작할 수 있도록 중간 결과 저장(checkpoint) 구조가 필요함
+
+**멀티페이지 Streamlit 상태 관리**
+- `st.session_state`를 통한 페이지 간 데이터 공유가 핵심 — 초기화 로직을 명확히 해야 페이지 이동 시 상태 손실 방지
+
+**보안 설계 원칙**
+- 하드코딩된 API 키·패스워드는 공개 저장소에서 즉시 노출됨 — 개발 초기부터 `.env` 기반 설계를 습관화해야 함
+- `.gitignore`에 결과 파일(.json, .csv, .xlsx)을 포함해 민감한 설문 응답 데이터 유출 방지
+
+---
+
+**📮 문의:** GitHub Issues를 통해 문의해 주세요.
