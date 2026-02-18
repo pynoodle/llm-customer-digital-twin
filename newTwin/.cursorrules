@@ -1,0 +1,235 @@
+# 디지털 트윈 서베이 시스템 - Cursor AI Rules
+
+## 프로젝트 개요
+이 프로젝트는 Twin-2K-500 데이터셋을 활용한 실리콘 샘플 기반 서베이/인터뷰/실험 시뮬레이션 시스템입니다.
+
+## 핵심 기술 스택
+- Python 3.9+
+- Streamlit (웹 GUI)
+- Anthropic Claude API (LLM)
+- HuggingFace Datasets (Twin-2K-500)
+- Pandas (데이터 처리)
+
+## 코드 스타일 가이드
+
+### Python
+- PEP 8 준수
+- Type hints 사용 권장
+- Docstring은 Google 스타일 사용
+- 함수/클래스명은 명확하고 설명적으로
+
+### 예시
+```python
+def conduct_survey(
+    self, 
+    persona_data: Dict[str, Any], 
+    questions: List[str],
+    survey_context: Optional[str] = None
+) -> Dict[str, Any]:
+    """서베이를 수행합니다.
+    
+    Args:
+        persona_data: 페르소나 데이터
+        questions: 질문 리스트
+        survey_context: 서베이 컨텍스트 (선택사항)
+    
+    Returns:
+        서베이 결과를 담은 딕셔너리
+    """
+    pass
+```
+
+## 주요 파일 구조
+
+### app.py
+- Streamlit 기반 GUI 메인 애플리케이션
+- 5개 탭: 페르소나 선택, 서베이, 인터뷰, 실험, 결과 분석
+- 수정 시 Streamlit 컴포넌트 사용법 준수
+
+### digital_twin_survey_system.py
+- 백엔드 로직 모음
+- 주요 클래스:
+  - SimulationConfig: 설정 관리
+  - PersonaDataLoader: 데이터 로딩
+  - QuestionTemplate: 질문 템플릿
+  - DigitalTwinSimulator: LLM 시뮬레이션
+  - ResultAnalyzer: 결과 분석
+
+## 개발 가이드라인
+
+### 새 기능 추가 시
+1. 기존 클래스 구조 활용
+2. 에러 핸들링 포함
+3. 사용자 친화적인 메시지
+4. Streamlit의 st.spinner, st.progress 활용
+
+### API 호출
+- Anthropic API 사용
+- 에러 처리 필수
+- rate limit 고려
+- 비용 최적화 (불필요한 호출 방지)
+
+### UI/UX
+- 명확한 진행 상태 표시
+- 적절한 색상과 아이콘 사용
+- 모바일 반응형 고려
+- 직관적인 네비게이션
+
+## 코드 작성 시 주의사항
+
+### DO
+✅ Type hints 사용
+✅ 명확한 변수명
+✅ 적절한 에러 처리
+✅ 사용자 피드백 (st.success, st.error)
+✅ 진행 상태 표시 (progress bar)
+✅ 결과 다운로드 기능
+✅ API 키 보안 (.env 사용)
+
+### DON'T
+❌ 하드코딩된 값
+❌ API 키 코드에 직접 작성
+❌ 불필요한 API 호출
+❌ 에러 무시
+❌ 과도한 중첩 (depth > 3)
+❌ 긴 함수 (50줄 초과 시 분리 고려)
+
+## 자주 사용하는 패턴
+
+### Streamlit 상태 관리
+```python
+if 'initialized' not in st.session_state:
+    st.session_state.initialized = False
+    st.session_state.data = []
+```
+
+### API 호출 패턴
+```python
+try:
+    response = self.client.messages.create(...)
+    return {"success": True, "data": response}
+except Exception as e:
+    return {"success": False, "error": str(e)}
+```
+
+### 진행 상태 표시
+```python
+progress_bar = st.progress(0)
+for i, item in enumerate(items):
+    # 작업 수행
+    progress_bar.progress((i + 1) / len(items))
+progress_bar.empty()
+```
+
+## 데이터 처리
+
+### Twin-2K-500 데이터셋
+- 2,058명의 참가자 데이터
+- 500+ 질문
+- persona_text 또는 persona_json 형식
+- 필터링 시 효율성 고려
+
+### 결과 저장
+- JSON: 원본 데이터 보존
+- CSV: 분석용
+- Excel: 공유용
+
+## 테스트 가이드
+
+### 로컬 테스트
+```bash
+# 소규모 테스트
+num_respondents = 2  # API 비용 절감
+
+# 전체 기능 테스트 전 체크리스트
+- [ ] API 키 설정
+- [ ] 데이터 로딩
+- [ ] 서베이 실행
+- [ ] 결과 다운로드
+- [ ] 에러 핸들링
+```
+
+## 최적화 팁
+
+### 성능
+- 불필요한 API 호출 방지
+- 결과 캐싱 활용 (st.cache_data)
+- 대용량 데이터는 페이지네이션
+
+### 비용
+- 테스트는 소규모로
+- temperature 조절로 토큰 절약
+- max_tokens 적절히 설정
+
+## 확장 아이디어
+
+### 즉시 구현 가능
+- 결과 시각화 (Plotly 차트)
+- 페르소나 필터링 고도화
+- 커스텀 질문 템플릿 UI
+- 과거 결과 불러오기
+
+### 중장기 개발
+- 실시간 대시보드
+- A/B 테스트 자동화
+- 다국어 지원
+- 클라우드 배포
+
+## 문제 해결
+
+### 일반적인 에러
+1. **ModuleNotFoundError**: `pip install -r requirements.txt`
+2. **API Error**: API 키 확인, rate limit 체크
+3. **데이터 로딩 실패**: 네트워크 확인, HuggingFace 접근성
+4. **Streamlit 에러**: 캐시 삭제 `streamlit cache clear`
+
+## AI 어시스턴트에게 요청할 때
+
+### 효과적인 프롬프트
+"[파일명]의 [함수명]에 [기능]을 추가해줘. [조건]을 만족해야 해."
+
+### 예시
+"app.py의 결과 분석 탭에 Plotly를 사용한 막대 그래프를 추가해줘. 
+서베이 결과의 감성 분석 결과를 시각화해야 해."
+
+## 버전 관리
+
+### 커밋 메시지 규칙
+- feat: 새 기능
+- fix: 버그 수정
+- docs: 문서 수정
+- style: 코드 포매팅
+- refactor: 리팩토링
+- test: 테스트 추가
+- chore: 기타 변경
+
+### 예시
+```
+feat: 서베이 결과 시각화 기능 추가
+fix: API 호출 에러 핸들링 개선
+docs: README에 설치 가이드 추가
+```
+
+## 보안
+
+### 중요
+- .env 파일은 절대 커밋하지 않기
+- .gitignore에 포함 확인
+- API 키는 환경변수로만 관리
+- 사용자 데이터는 로컬에만 저장
+
+## 성공적인 개발을 위한 체크리스트
+
+- [ ] 가상환경 활성화
+- [ ] 의존성 설치 완료
+- [ ] API 키 설정 완료
+- [ ] .env 파일 생성
+- [ ] Streamlit 실행 테스트
+- [ ] 기본 기능 작동 확인
+- [ ] 결과 다운로드 테스트
+- [ ] 에러 처리 확인
+
+---
+
+이 규칙을 기반으로 코드를 작성하고 수정하세요.
+Cursor AI는 이 규칙을 참고하여 더 나은 제안을 제공할 것입니다.
