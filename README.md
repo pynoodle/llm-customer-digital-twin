@@ -3,6 +3,14 @@
 > **Built:** October 2025
 
 LLM 기반 디지털 트윈 시스템 — 실제 사람 데이터셋으로 가상 인터뷰이를 생성하고, 설문조사·심층 인터뷰를 자동화합니다.
+> **HuggingFace 2,000명+ 실제 인물 데이터셋으로 가상 인터뷰이 생성 → 설문조사·심층 인터뷰 자동화**  
+> Persona injection into LLM system prompt · Batch survey simulation at scale · Multi-format export (JSON / CSV / Excel)
+
+![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
+![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o--mini-412991?logo=openai)
+![Streamlit](https://img.shields.io/badge/Streamlit-Web_UI-FF4B4B?logo=streamlit)
+![HuggingFace](https://img.shields.io/badge/HuggingFace-Twin--2K--500-FFD21E?logo=huggingface)
+![Pandas](https://img.shields.io/badge/Pandas-Analysis-150458?logo=pandas)
 
 ---
 
