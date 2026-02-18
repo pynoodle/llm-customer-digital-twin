@@ -46,3 +46,11 @@ processed_dataset/
 .DS_Store
 Thumbs.db
 
+
+# Legacy experiment folders
+newTwin/
+digital_twin_survey/
+
+# Local run artifacts
+simulation_results/
+img/

@@ -1,490 +1,1028 @@
 """
-디지털 트윈 설문조사 & 인터뷰 시스템
-Streamlit GUI 애플리케이션
+SurveyMonkey 스타일 설문 플랫폼
+단계별로 리서치 계획 → 조사 대상 선택 → 설문 작성 → 결과 분석
 """
 
 import streamlit as st
-import os
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from digital_twin_survey_system import DigitalTwinSurveySystem
+import os
+import json
+from datetime import datetime
+from pathlib import Path
 from dotenv import load_dotenv
-from src.dataset_loader import DatasetLoader
-from src.ai_agent import AIAgent
-from block_based_selector import BlockBasedSelector
+
+# .env 파일 로드
+load_dotenv()
+
+# Railway 환경변수에서 PORT 가져오기
+port = int(os.environ.get("PORT", 8501))
 
 # 페이지 설정
 st.set_page_config(
-    page_title="LLM Customer Digital Twin",
-    page_icon="🤖",
+    page_title="Digital Twin Survey Platform",
+    page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# 환경 변수 로드 (에러 무시)
-try:
-    load_dotenv()
-except:
-    pass  # .env 파일이 없거나 잘못되어도 계속 진행
-
-# 커스텀 CSS
+# CSS 스타일
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 3rem;
-        font-weight: bold;
-        color: #1E88E5;
-        text-align: center;
-        margin-bottom: 1rem;
+    /* 사이드바 완전히 숨기기 */
+    .css-1d391kg {
+        display: none !important;
     }
-    .sub-header {
-        font-size: 1.2rem;
-        color: #666;
+    
+    /* 사이드바 버튼 숨기기 */
+    [data-testid="stSidebar"] {
+        display: none !important;
+    }
+    
+    /* 사이드바 토글 버튼 숨기기 */
+    [data-testid="stSidebarToggler"] {
+        display: none !important;
+    }
+    
+    /* 사이드바 관련 모든 요소 숨기기 */
+    button[kind="header"] {
+        display: none !important;
+    }
+    
+    /* 메인 콘텐츠 영역 전체 너비 사용 */
+    .css-1lcbmhc, .css-1outpf7 {
+        padding-left: 1rem !important;
+        max-width: 100% !important;
+    }
+    
+    /* 스크롤 영역 전체 너비 */
+    .css-1v0mbdj {
+        max-width: 100% !important;
+    }
+    
+    .main-header {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #1E3A8A;
         text-align: center;
         margin-bottom: 2rem;
     }
-    .warning-box {
-        background-color: #fff3e0;
+    .step-card {
+        background-color: #F3F4F6;
+        padding: 1.5rem;
+        border-radius: 10px;
+        margin-bottom: 1rem;
+        border-left: 4px solid #3B82F6;
+    }
+    .completed-step {
+        border-left-color: #10B981;
+        background-color: #ECFDF5;
+    }
+    .current-step {
+        border-left-color: #F59E0B;
+        background-color: #FEF3C7;
+    }
+    .metric-card {
+        background-color: white;
         padding: 1rem;
         border-radius: 8px;
-        border-left: 5px solid #ff9800;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .stButton>button {
+        width: 100%;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        font-weight: 600;
     }
 </style>
 """, unsafe_allow_html=True)
 
+def get_client_ip():
+    """클라이언트 IP 주소 가져오기"""
+    try:
+        # Streamlit에서 IP 주소 가져오기
+        headers = st.get_option("server.headers")
+        if headers and 'X-Forwarded-For' in headers:
+            return headers['X-Forwarded-For'].split(',')[0].strip()
+        return "unknown"
+    except:
+        return "unknown"
 
-def initialize_session_state():
-    """세션 상태를 초기화합니다."""
-    if 'initialized' not in st.session_state:
-        st.session_state.initialized = False
+def log_survey_activity(user_id, question_text, num_respondents, num_questions, estimated_cost):
+    """설문 활동 로그 기록"""
+    log_file = Path("logs") / "survey_logs.json"
+    log_file.parent.mkdir(exist_ok=True)
     
-    if 'loader' not in st.session_state:
-        st.session_state.loader = None
+    log_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "user_id": user_id,
+        "ip_address": get_client_ip(),
+        "question_text": question_text,
+        "num_respondents": num_respondents,
+        "num_questions": num_questions,
+        "estimated_cost": estimated_cost
+    }
     
-    if 'ai_agent' not in st.session_state:
-        st.session_state.ai_agent = None
+    # 기존 로그 로드
+    if log_file.exists():
+        with open(log_file, 'r', encoding='utf-8') as f:
+            logs = json.load(f)
+    else:
+        logs = []
     
-    if 'block_selector' not in st.session_state:
-        st.session_state.block_selector = None
+    # 새 로그 추가
+    logs.append(log_entry)
     
-    if 'selected_personas' not in st.session_state:
-        st.session_state.selected_personas = []
-    
-    if 'survey_responses' not in st.session_state:
-        st.session_state.survey_responses = []
-    
-    if 'interview_results' not in st.session_state:
-        st.session_state.interview_results = []
-    
-    if 'api_key' not in st.session_state:
-        # 환경 변수에서 API 키 읽기
-        api_key = os.getenv("OPENAI_API_KEY", "")
-        st.session_state.api_key = api_key
+    # 로그 저장
+    with open(log_file, 'w', encoding='utf-8') as f:
+        json.dump(logs, f, ensure_ascii=False, indent=2)
 
+def initialize_system(api_key):
+    """시스템 초기화"""
+    try:
+        system = DigitalTwinSurveySystem(api_key=api_key)
+        system.load_dataset()
+        return system
+    except Exception as e:
+        st.error(f"시스템 초기화 오류: {e}")
+        return None
 
-def check_api_key():
-    """API 키를 확인하고 설정합니다."""
-    # API 키가 이미 세션에 있으면 통과
-    if st.session_state.api_key and len(st.session_state.api_key) > 20:
-        return True
+def show_admin_page():
+    """관리자 페이지"""
+    st.markdown('<p style="font-size: 0.9rem; color: #6B7280; text-align: center; margin-bottom: 0.5rem;">LLM Customer Digital Twin</p>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">🔐 관리자 페이지</h1>', unsafe_allow_html=True)
     
-    st.warning("⚠️ OpenAI API 키가 설정되지 않았습니다.")
+    log_file = Path("logs") / "survey_logs.json"
     
-    with st.expander("API 키 설정 방법", expanded=True):
-        st.markdown("""
-        **API 키를 입력하세요**
-        """)
-        
-        api_key_input = st.text_input(
-            "OpenAI API 키를 입력하세요",
-            type="password",
-            key="api_key_input",
-            value=""
-        )
-        
-        if st.button("API 키 저장"):
-            if api_key_input:
-                st.session_state.api_key = api_key_input
-                st.success("✅ API 키가 저장되었습니다!")
-                st.rerun()
-            else:
-                st.error("API 키를 입력해주세요.")
+    if not log_file.exists():
+        st.info("아직 로그가 없습니다.")
+        return
     
-    return False
-
-
-def initialize_system():
-    """시스템을 초기화합니다."""
-    if st.session_state.initialized:
-        return True
+    # 로그 로드
+    with open(log_file, 'r', encoding='utf-8') as f:
+        logs = json.load(f)
     
-    if not check_api_key():
-        return False
+    if not logs:
+        st.info("아직 로그가 없습니다.")
+        return
     
-    with st.spinner("🔄 시스템 초기화 중..."):
-        try:
-            # 데이터셋 로더 초기화
-            if st.session_state.loader is None:
-                loader = DatasetLoader()
-                loader.load()
-                st.session_state.loader = loader
-            
-            # AI 에이전트 초기화
-            if st.session_state.ai_agent is None:
-                agent = AIAgent(api_key=st.session_state.api_key)
-                st.session_state.ai_agent = agent
-            
-            # 블록 기반 선택 시스템 초기화
-            if st.session_state.block_selector is None:
-                try:
-                    # 인코딩 문제 방지를 위해 출력을 캡처
-                    import io
-                    import contextlib
-                    
-                    # 출력 캡처
-                    captured_output = io.StringIO()
-                    with contextlib.redirect_stdout(captured_output):
-                        with contextlib.redirect_stderr(captured_output):
-                            block_selector = BlockBasedSelector()
-                            block_selector.load()
-                    
-                    st.session_state.block_selector = block_selector
-                except Exception as e:
-                    st.warning(f"⚠️ 블록 기반 선택 시스템 초기화 실패: {e}")
-            
-            st.session_state.initialized = True
-            return True
-            
-        except Exception as e:
-            st.error(f"❌ 시스템 초기화 실패: {e}")
-            return False
-
-
-def main():
-    """메인 함수"""
-    initialize_session_state()
+    # 통계 표시
+    df = pd.DataFrame(logs)
     
-    # 헤더
-    st.markdown(
-        '<div style="text-align: center; color: #999; font-size: 0.9rem; margin-bottom: 0.5rem;">LLM Customer Digital Twin</div>',
-        unsafe_allow_html=True
-    )
-    st.markdown('<div class="main-header">🤖 美 고객 디지털 트윈</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="sub-header">AI 기반 설문조사 & 인터뷰 플랫폼</div>',
-        unsafe_allow_html=True
-    )
-    
-    # 시스템 초기화
-    if not initialize_system():
-        st.stop()
-    
-    # 초기화 성공 메시지
-    st.success("✅ 시스템이 준비되었습니다!")
-    
-    # 통계 정보
     col1, col2, col3, col4 = st.columns(4)
     
-    total_personas = len(st.session_state.loader.get_all_personas())
-    selected = len(st.session_state.selected_personas)
-    survey_count = len(st.session_state.survey_responses)
-    interview_count = len(st.session_state.interview_results)
-    
     with col1:
-        st.metric("전체 페르소나", f"{total_personas:,}")
+        st.metric("총 설문 수", len(df))
     
     with col2:
-        st.metric("선택된 응답자", selected)
+        total_respondents = df['num_respondents'].sum()
+        st.metric("총 응답자 수", f"{total_respondents:,}명")
     
     with col3:
-        st.metric("설문 응답", survey_count)
+        total_cost = df['estimated_cost'].sum()
+        st.metric("총 예상 비용", f"${total_cost:.2f}")
     
     with col4:
-        st.metric("인터뷰 완료", interview_count)
+        unique_users = df['user_id'].nunique()
+        st.metric("사용자 수", f"{unique_users}명")
     
-    st.divider()
+    st.markdown("---")
     
-    # 주요 기능 소개
-    st.markdown("## 📋 주요 기능")
+    # 로그 테이블
+    st.markdown("### 상세 로그")
+    
+    # IP별 통계
+    st.markdown("#### IP별 사용 통계")
+    ip_stats = df.groupby('ip_address').agg({
+        'num_respondents': 'sum',
+        'estimated_cost': 'sum',
+        'timestamp': 'count'
+    }).reset_index()
+    ip_stats.columns = ['IP 주소', '총 응답자 수', '총 비용', '설문 수']
+    st.dataframe(ip_stats, use_container_width=True)
+    
+    st.markdown("---")
+    
+    # 전체 로그
+    st.markdown("#### 전체 활동 로그")
+    
+    # 데이터프레임 변환 및 정렬
+    display_df = df[['timestamp', 'user_id', 'ip_address', 'question_text', 'num_respondents', 'num_questions', 'estimated_cost']].copy()
+    display_df.columns = ['시간', '사용자', 'IP 주소', '질문', '응답자 수', '질문 수', '예상 비용']
+    display_df = display_df.sort_values('시간', ascending=False)
+    
+    st.dataframe(display_df, use_container_width=True)
+    
+    # 다운로드 버튼
+    st.markdown("---")
+    csv = display_df.to_csv(index=False, encoding='utf-8-sig')
+    st.download_button(
+        label="📥 로그 다운로드 (CSV)",
+        data=csv,
+        file_name=f"survey_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+        mime="text/csv"
+    )
+
+def reset_session_state():
+    """세션 상태 초기화"""
+    keys_to_reset = [
+        'research_title', 'research_objective', 'step', 'selected_personas',
+        'survey_questions', 'survey_results', 'current_question'
+    ]
+    for key in keys_to_reset:
+        if key in st.session_state:
+            del st.session_state[key]
+
+def render_step_indicator(current_step):
+    """단계 표시기"""
+    steps = [
+        ("1", "리서치 계획", "🔬"),
+        ("2", "조사 대상 선택", "👥"),
+        ("3", "설문 작성", "📝"),
+        ("4", "결과 분석", "📊")
+    ]
+    
+    cols = st.columns(4)
+    for idx, (num, name, icon) in enumerate(steps):
+        with cols[idx]:
+            if idx < current_step:
+                st.markdown(f"""
+                <div class="step-card completed-step">
+                    <h3>{icon} {num}</h3>
+                    <p style="font-weight: bold; color: #10B981;">{name}</p>
+                    <p style="font-size: 0.8rem; color: #059669;">✓ 완료</p>
+                </div>
+                """, unsafe_allow_html=True)
+            elif idx == current_step:
+                st.markdown(f"""
+                <div class="step-card current-step">
+                    <h3>{icon} {num}</h3>
+                    <p style="font-weight: bold; color: #F59E0B;">{name}</p>
+                    <p style="font-size: 0.8rem; color: #D97706;">진행 중</p>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div class="step-card">
+                    <h3>{icon} {num}</h3>
+                    <p style="font-weight: bold; color: #6B7280;">{name}</p>
+                    <p style="font-size: 0.8rem; color: #9CA3AF;">대기 중</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+def step1_research_planning(system):
+    """1단계: 리서치 계획"""
+    st.markdown("## 🔬 1단계: 리서치 계획")
+    st.markdown("---")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown("### 리서치 기본 정보")
+        
+        research_title = st.text_input(
+            "📌 리서치 제목",
+            value=st.session_state.get('research_title', ''),
+            placeholder="예: AI 도구 사용 만족도 조사"
+        )
+        
+        research_objective = st.text_area(
+            "🎯 리서치 목적",
+            value=st.session_state.get('research_objective', ''),
+            placeholder="이 리서치를 통해 무엇을 알아보고 싶으신가요?",
+            height=100
+        )
+        
+        st.session_state['research_title'] = research_title
+        st.session_state['research_objective'] = research_objective
+    
+    with col2:
+        st.markdown("### 데이터셋 정보")
+        
+        # 인구통계 데이터 정의
+        demographics_data = {
+            "Region": [
+                ("South", 834, 40.5),
+                ("West", 494, 24.0),
+                ("Midwest", 372, 18.1),
+                ("Northeast", 342, 16.6),
+                ("Pacific", 16, 0.8)
+            ],
+            "Sex": [
+                ("Female", 1044, 50.7),
+                ("Male", 1014, 49.3)
+            ],
+            "Age": [
+                ("18-29", 388, 18.9),
+                ("30-49", 735, 35.7),
+                ("50-64", 658, 32.0),
+                ("65+", 277, 13.5)
+            ],
+            "Education": [
+                ("Less than high school", 17, 0.8),
+                ("High school graduate", 272, 13.2),
+                ("Some college, no degree", 468, 22.7),
+                ("Associate's degree", 253, 12.3),
+                ("College graduate/some postgrad", 735, 35.7),
+                ("Postgraduate", 313, 15.2)
+            ],
+            "Race": [
+                ("White", 1361, 66.1),
+                ("Black", 251, 12.2),
+                ("Hispanic", 194, 9.4),
+                ("Asian", 140, 6.8),
+                ("Other", 112, 5.4)
+            ],
+            "Citizenship": [
+                ("Yes", 2054, 99.8),
+                ("No", 4, 0.2)
+            ],
+            "Marital Status": [
+                ("Married", 813, 39.5),
+                ("Never been married", 714, 34.7),
+                ("Divorced", 218, 10.6),
+                ("Living with a partner", 212, 10.3),
+                ("Widowed", 70, 3.4),
+                ("Separated", 31, 1.5)
+            ],
+            "Religion": [
+                ("Protestant", 510, 24.8),
+                ("Roman Catholic", 358, 17.4),
+                ("Nothing in particular", 327, 15.9),
+                ("Agnostic", 311, 15.1),
+                ("Atheist", 216, 10.5),
+                ("Other", 215, 10.4),
+                ("Jewish", 39, 1.9),
+                ("Buddhist", 25, 1.2),
+                ("Muslim", 18, 0.9),
+                ("Orthodox", 17, 0.8),
+                ("Mormon", 15, 0.7),
+                ("Hindu", 7, 0.3)
+            ],
+            "Religious Attendance": [
+                ("Never", 838, 40.7),
+                ("Seldom", 463, 22.5),
+                ("Once a week", 295, 14.3),
+                ("A few times a year", 246, 12.0),
+                ("Once or twice a month", 129, 6.3),
+                ("More than once a week", 87, 4.2)
+            ],
+            "Political Party": [
+                ("Democrat", 847, 41.2),
+                ("Independent", 609, 29.6),
+                ("Republican", 540, 26.2),
+                ("Something else", 62, 3.0)
+            ],
+            "Household Income": [
+                ("Less than $30,000", 367, 17.9),
+                ("$30,000-$50,000", 412, 20.0),
+                ("$50,000-$75,000", 411, 20.0),
+                ("$75,000-$100,000", 316, 15.4),
+                ("$100,000 or more", 552, 26.8)
+            ],
+            "Political Ideology": [
+                ("Moderate", 582, 28.3),
+                ("Liberal", 564, 27.4),
+                ("Conservative", 430, 20.9),
+                ("Very liberal", 345, 16.8),
+                ("Very conservative", 137, 6.7)
+            ],
+            "Household Size": [
+                ("1", 412, 20.0),
+                ("2", 650, 31.6),
+                ("3", 423, 20.6),
+                ("4", 352, 17.1),
+                ("More than 4", 221, 10.7)
+            ],
+            "Employment Status": [
+                ("Full-time employment", 871, 42.3),
+                ("Self-employed", 280, 13.6),
+                ("Part-time employment", 269, 13.1),
+                ("Unemployed", 249, 12.1),
+                ("Retired", 245, 11.9),
+                ("Student", 78, 3.8),
+                ("Home-maker", 66, 3.2)
+            ]
+        }
+        
+        st.info(f"""
+        **미국 소비자 디지털 트윈 데이터**
+        
+        - 총 페르소나: **2,058명**
+        - [논문 보기](https://arxiv.org/abs/2505.17479)
+        """)
+        
+        # 인구통계 데이터 상세 표시 (expander)
+        with st.expander("📊 데이터 상세 보기", expanded=False):
+            st.markdown("### Demographic characteristics of sample")
+            
+            for category, data in demographics_data.items():
+                st.markdown(f"#### {category}")
+                df = pd.DataFrame(data, columns=["Category", "Count", "Percentage"])
+                df['Percentage'] = df['Percentage'].apply(lambda x: f"{x}%")
+                st.dataframe(df, use_container_width=True, hide_index=True)
+                st.markdown("---")
+    
+    # 다음 단계로 이동
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        if st.button("다음 단계: 조사 대상 선택 →", type="primary", use_container_width=True):
+            if research_title and research_objective:
+                st.session_state['step'] = 2
+                st.rerun()
+            else:
+                st.warning("리서치 제목과 목적을 입력해주세요.")
+
+def calculate_estimated_cost(num_respondents, num_questions):
+    """예상 비용 계산"""
+    # OpenAI API 비용 (GPT-4 기준)
+    # Input: $0.03 per 1K tokens
+    # Output: $0.06 per 1K tokens
+    
+    # 평균 토큰 수 추정
+    avg_input_tokens_per_question = 200  # 질문당 입력 토큰
+    avg_output_tokens_per_question = 50  # 질문당 출력 토큰
+    
+    # 총 토큰 수 계산
+    total_input_tokens = num_respondents * num_questions * avg_input_tokens_per_question
+    total_output_tokens = num_respondents * num_questions * avg_output_tokens_per_question
+    
+    # 비용 계산
+    input_cost = (total_input_tokens / 1000) * 0.03
+    output_cost = (total_output_tokens / 1000) * 0.06
+    total_cost = input_cost + output_cost
+    
+    return {
+        'input_tokens': total_input_tokens,
+        'output_tokens': total_output_tokens,
+        'input_cost': input_cost,
+        'output_cost': output_cost,
+        'total_cost': total_cost
+    }
+
+def step2_audience_selection(system):
+    """2단계: 조사 대상 선택"""
+    st.markdown("## 👥 2단계: 조사 대상 선택")
+    st.markdown("---")
+    
+    # 필터링 옵션
+    st.markdown("### 인구통계학적 필터")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        with st.container():
-            st.markdown("### 📊 설문조사")
-            st.markdown("""
-            - **1-7점 리커트 척도** 응답
-            - 구조화된 질문 관리
-            - 자동 통계 분석
-            - 다양한 형식으로 내보내기
-            """)
+        st.markdown("#### 기본 정보")
         
-        st.markdown("")
+        # 연령대
+        age_options = ["18-29", "30-49", "50-64", "65+"]
+        selected_ages = st.multiselect(
+            "연령대",
+            options=age_options,
+            default=age_options,
+            key="age_select"
+        )
         
-        with st.container():
-            st.markdown("### 🎯 응답자 선택")
-            st.markdown("""
-            - 무작위 샘플링
-            - 조건 기반 필터링
-            - 미리보기 기능
-            - ID 직접 선택
-            """)
+        # 성별
+        gender_options = ["Male", "Female"]
+        selected_genders = st.multiselect(
+            "성별",
+            options=gender_options,
+            default=gender_options,
+            key="gender_select"
+        )
     
     with col2:
-        with st.container():
-            st.markdown("### 💬 인터뷰")
-            st.markdown("""
-            - 개방형 질문 응답
-            - 자연스러운 대화
-            - 인터뷰록 자동 생성
-            - 심층 분석 지원
-            """)
+        st.markdown("#### 지역")
         
-        st.markdown("")
+        location_options = ["South", "West", "Midwest", "Northeast", "Pacific"]
+        selected_locations = st.multiselect(
+            "지역",
+            options=location_options,
+            default=location_options,
+            key="location_select"
+        )
         
-        with st.container():
-            st.markdown("### 📁 결과 관리")
-            st.markdown("""
-            - JSON, CSV, Excel 형식
-            - 실시간 시각화
-            - 통계 자동 계산
-            - 인터뷰록 다운로드
-            """)
-
+        # 교육 수준
+        education_options = [
+            "Less than high school", "High school graduate", 
+            "Some college, no degree", "Associate's degree",
+            "College graduate/some postgrad", "Postgraduate"
+        ]
+        selected_educations = st.multiselect(
+            "교육 수준",
+            options=education_options,
+            default=education_options,
+            key="education_select"
+        )
     
-    st.divider()
+    # 샘플 크기
+    st.markdown("---")
+    st.markdown("### 샘플 크기")
+    max_respondents = st.slider(
+        "선택할 응답자 수",
+        1, len(system.dataset['data']), 50,
+        key="max_respondents"
+    )
     
-    # 시작 가이드
-    st.markdown("## 🚀 시작하기")
-    
-    st.markdown("""
-    1. **왼쪽 사이드바**에서 원하는 메뉴를 선택하세요
-    2. **응답자 선택** 페이지에서 연구 대상을 선택합니다
-    3. **설문조사** 또는 **인터뷰** 페이지에서 연구를 진행합니다
-    4. **결과 보기** 페이지에서 분석 결과를 확인하고 다운로드합니다
-    """)
-    
-    # 경고 메시지
-    if not st.session_state.selected_personas:
-        st.markdown('<div class="warning-box">', unsafe_allow_html=True)
-        st.warning("⚠️ 아직 응답자를 선택하지 않았습니다. '응답자 선택' 페이지로 이동하세요.")
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    st.divider()
-    
-    # 데이터셋 정보
-    with st.expander("📊 데이터셋 정보", expanded=False):
-        st.markdown("### Twin-2K-500 데이터셋")
-        st.markdown("""
-        - **출처**: [Hugging Face - LLM-Digital-Twin](https://huggingface.co/datasets/LLM-Digital-Twin/Twin-2K-500)
-        - **참가자**: 2,058명의 디지털 트윈
-        - **설명**: 실제 사람들의 500개 이상 질문 응답 데이터 기반
-        - **활용**: AI 기반 설문조사 및 인터뷰 시뮬레이션
-        """)
+    # 예상 비용 표시 (질문 수가 있는 경우)
+    if 'survey_questions' in st.session_state and len(st.session_state.get('survey_questions', [])) > 0:
+        num_questions = len(st.session_state['survey_questions'])
+        cost_info = calculate_estimated_cost(max_respondents, num_questions)
         
-        st.divider()
-        
-        if st.session_state.loader:
-            # 기존 데이터셋 정보
-            categorized = st.session_state.loader.get_categorized_fields()
-            
-            # 블록 기반 데이터셋 정보 추가
-            if st.session_state.block_selector:
-                st.markdown("### 🎯 블록 기반 설문대상 선정")
-                st.markdown("블록별 특성을 활용한 정밀한 응답자 선정이 가능합니다.")
-                
-                # 블록 통계 표시
-                block_stats = st.session_state.block_selector.get_block_statistics()
-                if block_stats:
-                    st.markdown("#### 📊 주요 블록 분포")
-                    
-                    # 블록 설명 매핑
-                    block_descriptions = {
-                        "Demographics": "인구통계학적 특성 (나이, 성별, 지역 등)",
-                        "Personality": "성격 특성 및 심리적 특성",
-                        "Cognitive Tests": "인지능력 및 사고력 테스트",
-                        "Economic Preferences": "경제적 선호도 및 의사결정",
-                        "Product Preferences - Pricing": "제품 가격 선호도",
-                        "False Consensus": "거짓 합의 효과 실험",
-                        "Base Rate 70 Engineers": "기본률 오류 실험 (70명 엔지니어)",
-                        "Base Rate 30 Engineers": "기본률 오류 실험 (30명 엔지니어)",
-                        "Disease Loss": "질병 손실 프레이밍 실험",
-                        "Disease Gain": "질병 이익 프레이밍 실험",
-                        "Anchoring - African Countries High": "앵커링 효과 (아프리카 국가 - 높은 앵커)",
-                        "Anchoring - African Countries Low": "앵커링 효과 (아프리카 국가 - 낮은 앵커)",
-                        "Anchoring - Redwood High": "앵커링 효과 (세쿼이아 - 높은 앵커)",
-                        "Anchoring - Redwood Low": "앵커링 효과 (세쿼이아 - 낮은 앵커)",
-                        "Outcome Bias - Success": "결과 편향 (성공 사례)",
-                        "Outcome Bias - Failure": "결과 편향 (실패 사례)",
-                        "Sunk Cost - Yes": "매몰비용 효과 (예)",
-                        "Sunk Cost - No": "매몰비용 효과 (아니오)",
-                        "Allais Form 1": "앨리스 패러독스 (형태 1)",
-                        "Allais Form 2": "앨리스 패러독스 (형태 2)",
-                        "Linda Conjunction": "린다 문제 (연접)",
-                        "Linda -No Conjunction": "린다 문제 (비연접)",
-                        "Myside German": "내 편향 (독일 관련)",
-                        "Myside Ford": "내 편향 (포드 관련)",
-                        "Probability Matching vs. Maximizing - Problem 1": "확률 매칭 vs 최대화 (문제 1)",
-                        "Probability Matching vs. Maximizing - Problem 2": "확률 매칭 vs 최대화 (문제 2)",
-                        "Less is More Gamble A": "덜이 더 효과 (게임 A)",
-                        "Less is More Gamble B": "덜이 더 효과 (게임 B)",
-                        "Less is More Gamble C": "덜이 더 효과 (게임 C)",
-                        "Proportion Dominance 1A": "비율 지배 (1A)",
-                        "Proportion Dominance 1B": "비율 지배 (1B)",
-                        "Proportion Dominance 1C": "비율 지배 (1C)",
-                        "Proportion Dominance 2A": "비율 지배 (2A)",
-                        "Proportion Dominance 2B": "비율 지배 (2B)",
-                        "Proportion Dominance 2C": "비율 지배 (2C)",
-                        "WTA/WTP Thaler Problem - WTA Certainty": "지불의사/수용의사 (확실성)",
-                        "WTA/WTP Thaler Problem - WTP Certainty": "지불의사/수용의사 (확실성)",
-                        "WTA/WTP Thaler - WTP Noncertainty": "지불의사/수용의사 (불확실성)",
-                        "Absolute vs. Relative - Calculator": "절대 vs 상대 (계산기)",
-                        "Absolute vs. Relative - Jacket": "절대 vs 상대 (재킷)",
-                        "Non-Experimental Heuristics and Biases": "비실험적 휴리스틱 및 편향",
-                        "Forward Flow": "순방향 흐름"
-                    }
-                    
-                    # 상위 10개 블록 표시
-                    sorted_stats = sorted(block_stats.items(), key=lambda x: x[1]['presence_rate'], reverse=True)
-                    
-                    for i, (block_name, stat) in enumerate(sorted_stats[:10]):
-                        description = block_descriptions.get(block_name, "심리학/행동경제학 실험")
-                        
-                        with st.expander(f"**{block_name}** ({stat['presence_rate']:.1f}%)", expanded=(i < 3)):
-                            st.write(f"**설명**: {description}")
-                            st.write(f"**참여자 수**: {stat['presence_count']:,}명")
-                            if stat['avg_questions'] > 0:
-                                st.write(f"**평균 질문 수**: {stat['avg_questions']:.1f}개")
-                    
-                    st.caption("💡 '응답자 선택' 페이지에서 블록 기반 필터링을 사용할 수 있습니다.")
-                
-                st.divider()
-            
-            if categorized:
-                st.markdown("### 📂 데이터 카테고리 구성")
-                st.markdown("응답자를 필터링할 때 사용할 수 있는 데이터 카테고리입니다.")
-                st.markdown("")
-                
-                # 카테고리별 설명과 필드 수
-                category_info = {
-                    "인구통계": ("📊", "나이, 성별, 인종 등 기본 인구통계학적 정보"),
-                    "직업경제": ("💼", "직업, 산업, 소득, 고용 상태 등"),
-                    "교육": ("🎓", "학력, 전공, 학교 등 교육 관련 정보"),
-                    "성격심리": ("🧠", "성격 특성, Big Five 지표 등"),
-                    "경제특성": ("💰", "재정 상태, 자산, 소비 패턴 등"),
-                    "라이프스타일": ("🏠", "취미, 관심사, 건강, 여가 활동 등"),
-                    "지리위치": ("🌍", "거주지, 도시, 지역 등"),
-                    "관계가족": ("❤️", "결혼 상태, 자녀, 가족 구성 등"),
-                    "가치관태도": ("🎯", "설문 응답 데이터 (question_1~31)"),
-                    "기술미디어": ("📱", "기술 사용, SNS, 디지털 리터러시 등"),
-                    "기타": ("🔢", "기타 분류되지 않은 필드")
-                }
-                
-                for category, fields in categorized.items():
-                    emoji, description = category_info.get(category, ("📂", ""))
-                    
-                    with st.container():
-                        col1, col2 = st.columns([3, 1])
-                        
-                        with col1:
-                            st.markdown(f"**{emoji} {category}**")
-                            st.caption(description)
-                        
-                        with col2:
-                            st.metric("필드 수", len(fields))
-                        
-                        # 처음 5개 필드만 표시
-                        with st.expander(f"필드 목록 보기 ({len(fields)}개)", expanded=False):
-                            for i, field in enumerate(fields[:10], 1):
-                                st.text(f"{i}. {field}")
-                            if len(fields) > 10:
-                                st.caption(f"... 외 {len(fields) - 10}개")
-                
-                st.divider()
-                
-                # 전체 통계
-                total_fields = sum(len(f) for f in categorized.values())
-                st.success(f"✅ 총 **{total_fields}개**의 필드로 응답자 필터링 가능")
-            
-            st.divider()
-            
-            # 샘플 페르소나 미리보기
-            if st.session_state.loader.personas:
-                st.markdown("### 👤 샘플 페르소나 데이터")
-                st.caption("첫 번째 페르소나의 데이터 예시입니다.")
-                
-                sample_persona = st.session_state.loader.personas[0]
-                
-                # 실제 데이터에서 사용 가능한 필드 찾기
-                available_fields = []
-                for key, value in sample_persona.data.items():
-                    if value and str(value).strip() and key not in ['persona_text', 'persona_summary', 'persona_json']:
-                        available_fields.append(key)
-                
-                # 처음 10개 필드만 표시
-                display_fields = available_fields[:10]
-                
-                if display_fields:
-                    sample_data = {}
-                    for field in display_fields:
-                        value = sample_persona.data[field]
-                        # 너무 긴 값은 잘라냄
-                        if isinstance(value, str) and len(value) > 100:
-                            value = value[:100] + "..."
-                        sample_data[field] = value
-                    
-                    df_sample = pd.DataFrame([sample_data]).T
-                    df_sample.columns = ['값']
-                    st.dataframe(df_sample, use_container_width=True)
-                    
-                    if len(available_fields) > 10:
-                        st.caption(f"총 {len(available_fields)}개 필드 중 처음 10개만 표시")
-                else:
-                    # 모든 데이터 표시 (너무 많을 수 있음)
-                    st.info("주요 필드가 없어 전체 데이터를 표시합니다.")
-                    all_data = {}
-                    for key, value in sample_persona.data.items():
-                        if value and str(value).strip():
-                            if isinstance(value, str) and len(value) > 50:
-                                value = value[:50] + "..."
-                            all_data[key] = value
-                    
-                    if all_data:
-                        df_all = pd.DataFrame([all_data]).T
-                        df_all.columns = ['값']
-                        st.dataframe(df_all, use_container_width=True)
-                    else:
-                        st.info("샘플 데이터를 표시할 수 없습니다.")
-    
-    # 도움말
-    with st.expander("❓ 도움말", expanded=False):
-        st.markdown("""
-        ### 자주 묻는 질문
-        
-        **Q: API 비용은 얼마나 드나요?**  
-        A: GPT-4o-mini 모델을 사용하여 비용을 최소화했습니다. 응답당 약 $0.001-0.002 정도입니다.
-        
-        **Q: 응답 시간은 얼마나 걸리나요?**  
-        A: 응답자 1명당 약 1-2초가 소요됩니다. 지연 시간을 조절할 수 있습니다.
-        
-        **Q: 결과를 어떻게 저장하나요?**  
-        A: '결과 보기' 페이지에서 JSON, CSV, Excel 형식으로 다운로드할 수 있습니다.
-        
-        **Q: 설문조사 템플릿을 재사용할 수 있나요?**  
-        A: 예, 설문조사와 인터뷰 가이드를 JSON 파일로 저장/로드할 수 있습니다.
+        st.success(f"""
+        💰 **예상 비용**: {max_respondents}명 × {num_questions}개 질문 = **${cost_info['total_cost']:.2f}**
         """)
     
-    st.divider()
+    # 필터링 실행
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("🔍 필터링 실행", type="primary", use_container_width=True):
+            criteria = {
+                'age_ranges': selected_ages,
+                'genders': selected_genders,
+                'locations': selected_locations,
+                'educations': selected_educations
+            }
+            
+            selected_indices = system.select_personas_by_criteria(criteria)
+            
+            if selected_indices:
+                # 샘플 크기 조정
+                if len(selected_indices) > max_respondents:
+                    import random
+                    selected_indices = random.sample(selected_indices, max_respondents)
+                
+                st.session_state['selected_personas'] = selected_indices
+                st.success(f"✅ {len(selected_indices)}명의 조사 대상이 선택되었습니다!")
+                
+                # 선택된 대상 요약
+                with st.expander("선택된 조사 대상 요약"):
+                    display_audience_summary(system, selected_indices)
+            else:
+                st.warning("선택된 조건에 맞는 조사 대상이 없습니다.")
     
-    # 푸터
-    st.markdown("""
-    <div style='text-align: center; color: #666; padding: 2rem;'>
-        <p>Powered by OpenAI GPT-4o-mini | Hugging Face Twin-2K-500</p>
-        <p>🤖 LLM Customer Digital Twin System</p>
-    </div>
-    """, unsafe_allow_html=True)
+    # 이전/다음 단계
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col1:
+        if st.button("← 이전 단계", use_container_width=True):
+            st.session_state['step'] = 1
+            st.rerun()
+    with col3:
+        if st.button("다음 단계: 설문 작성 →", type="primary", use_container_width=True):
+            if 'selected_personas' in st.session_state:
+                st.session_state['step'] = 3
+                st.rerun()
+            else:
+                st.warning("먼저 조사 대상을 선택해주세요.")
 
+def display_audience_summary(system, selected_indices):
+    """조사 대상 요약 표시"""
+    # 통계 계산
+    age_dist = {"18-29": 0, "30-49": 0, "50-64": 0, "65+": 0}
+    gender_dist = {"Male": 0, "Female": 0}
+    
+    for idx in selected_indices:
+        row = system.dataset['data'][idx]
+        summary = row.get('persona_summary', '')
+        
+        if "Age: 18-29" in summary:
+            age_dist["18-29"] += 1
+        elif "Age: 30-49" in summary:
+            age_dist["30-49"] += 1
+        elif "Age: 50-64" in summary:
+            age_dist["50-64"] += 1
+        elif "Age: 65+" in summary:
+            age_dist["65+"] += 1
+        
+        if "Gender: Male" in summary:
+            gender_dist["Male"] += 1
+        elif "Gender: Female" in summary:
+            gender_dist["Female"] += 1
+    
+    # 통계 표시
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**연령 분포**")
+        for age, count in age_dist.items():
+            if count > 0:
+                percentage = (count / len(selected_indices)) * 100
+                st.write(f"• {age}: {count}명 ({percentage:.1f}%)")
+    
+    with col2:
+        st.markdown("**성별 분포**")
+        for gender, count in gender_dist.items():
+            if count > 0:
+                percentage = (count / len(selected_indices)) * 100
+                st.write(f"• {gender}: {count}명 ({percentage:.1f}%)")
+
+def step3_survey_creation(system):
+    """3단계: 설문 작성"""
+    st.markdown("## 📝 3단계: 설문 작성")
+    st.markdown("---")
+    
+    # 예상 비용 표시
+    if 'selected_personas' in st.session_state and 'survey_questions' in st.session_state and st.session_state['survey_questions']:
+        num_respondents = len(st.session_state['selected_personas'])
+        num_questions = len(st.session_state['survey_questions'])
+        cost_info = calculate_estimated_cost(num_respondents, num_questions)
+        
+        st.info(f"""
+        💰 **예상 비용**
+        - 조사 대상: {num_respondents}명
+        - 질문 수: {num_questions}개
+        - 예상 총 비용: **${cost_info['total_cost']:.2f}**
+        - 입력 토큰: {cost_info['input_tokens']:,} 토큰 (${cost_info['input_cost']:.2f})
+        - 출력 토큰: {cost_info['output_tokens']:,} 토큰 (${cost_info['output_cost']:.2f})
+        """)
+        st.markdown("---")
+    
+    # 질문 작성
+    st.markdown("### 설문 질문 작성")
+    
+    if 'survey_questions' not in st.session_state:
+        st.session_state['survey_questions'] = []
+    
+    # 질문 리스트
+    st.markdown("#### 작성된 질문")
+    if st.session_state['survey_questions']:
+        for idx, q in enumerate(st.session_state['survey_questions']):
+            with st.expander(f"질문 {idx+1}: {q['question']}"):
+                st.write(f"**척도**: {q['scale']}")
+                if st.button(f"삭제", key=f"delete_{idx}"):
+                    st.session_state['survey_questions'].pop(idx)
+                    st.rerun()
+    else:
+        st.info("아직 질문이 없습니다. 아래에서 질문을 추가하세요.")
+    
+    st.markdown("---")
+    
+    # 새 질문 추가
+    st.markdown("#### 새 질문 추가")
+    
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        new_question = st.text_input(
+            "질문 내용",
+            placeholder="예: 현재 직업에 대한 만족도는 어느 정도인가요?",
+            key="new_question"
+        )
+    
+    with col2:
+        scale = st.selectbox(
+            "척도",
+            ["1-7", "1-5", "1-10"],
+            key="new_scale"
+        )
+    
+    if st.button("질문 추가", type="primary"):
+        if new_question:
+            st.session_state['survey_questions'].append({
+                'question': new_question,
+                'scale': scale,
+                'type': 'likert'
+            })
+            st.success("질문이 추가되었습니다!")
+            st.rerun()
+        else:
+            st.warning("질문 내용을 입력해주세요.")
+    
+    # 샘플 질문
+    st.markdown("---")
+    st.markdown("#### 샘플 질문 사용")
+    if st.button("샘플 질문 로드"):
+        st.session_state['survey_questions'] = [
+            {
+                "question": "How satisfied are you with your current job? (1=very dissatisfied, 7=very satisfied)",
+                "scale": "1-7",
+                "type": "likert"
+            },
+            {
+                "question": "How likely are you to recommend AI tools to colleagues? (1=not at all, 7=very likely)",
+                "scale": "1-7",
+                "type": "likert"
+            },
+            {
+                "question": "Rate your work-life balance (1=very poor, 7=excellent)",
+                "scale": "1-7",
+                "type": "likert"
+            }
+        ]
+        st.rerun()
+    
+    # 설문 실행
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 1, 1])
+    
+    with col1:
+        if st.button("← 이전 단계", use_container_width=True):
+            st.session_state['step'] = 2
+            st.rerun()
+    
+    with col3:
+        if st.button("설문 실행 →", type="primary", use_container_width=True):
+            if st.session_state['survey_questions'] and 'selected_personas' in st.session_state:
+                with st.spinner("설문을 실행하는 중..."):
+                    questions = st.session_state['survey_questions']
+                    selected_indices = st.session_state['selected_personas']
+                    
+                    # 설문 실행
+                    survey = system.create_survey(questions)
+                    results = system.conduct_survey(survey, selected_indices)
+                    
+                    if results is not None and not results.empty:
+                        st.session_state['survey_results'] = [results]
+                        st.session_state['step'] = 4
+                        
+                        # 로그 기록
+                        num_respondents = len(selected_indices)
+                        num_questions = len(questions)
+                        cost_info = calculate_estimated_cost(num_respondents, num_questions)
+                        question_text = ", ".join([q['question'] for q in questions])
+                        
+                        log_survey_activity(
+                            user_id=st.session_state.get('user_id', 'anonymous'),
+                            question_text=question_text,
+                            num_respondents=num_respondents,
+                            num_questions=num_questions,
+                            estimated_cost=cost_info['total_cost']
+                        )
+                        
+                        st.success("설문이 완료되었습니다!")
+                        st.rerun()
+            else:
+                st.warning("질문을 추가하고 조사 대상을 선택해주세요.")
+
+def step4_results_analysis(system):
+    """4단계: 결과 분석"""
+    st.markdown("## 📊 4단계: 결과 분석")
+    st.markdown("---")
+    
+    if 'survey_results' not in st.session_state or not st.session_state['survey_results']:
+        st.warning("아직 설문 결과가 없습니다.")
+        if st.button("설문 작성으로 돌아가기"):
+            st.session_state['step'] = 3
+            st.rerun()
+        return
+    
+    # 리서치 정보 요약
+    st.markdown("### 리서치 요약")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("조사 대상", f"{len(st.session_state['selected_personas'])}명")
+    
+    with col2:
+        st.metric("질문 수", f"{len(st.session_state['survey_questions'])}개")
+    
+    with col3:
+        if st.session_state['survey_results']:
+            df = st.session_state['survey_results'][0]
+            # 숫자형 컬럼만 선택
+            numeric_cols = [col for col in df.columns if col.startswith('Q') and df[col].dtype in ['int64', 'float64']]
+            if numeric_cols:
+                avg_score = df[numeric_cols].mean().mean()
+                st.metric("평균 점수", f"{avg_score:.2f}")
+            else:
+                st.metric("평균 점수", "N/A")
+    
+    st.markdown("---")
+    
+    # 질문별 분석
+    st.markdown("### 질문별 상세 분석")
+    
+    for idx, df in enumerate(st.session_state['survey_results']):
+        st.markdown(f"#### 설문 {idx+1}")
+        
+        # 질문별 통계 (숫자형 컬럼만)
+        question_cols = [col for col in df.columns if col.startswith('Q') and df[col].dtype in ['int64', 'float64']]
+        
+        for col in question_cols:
+            # 질문 텍스트 찾기
+            question_text = f"{col}"
+            if 'survey_questions' in st.session_state:
+                question_idx = int(col.replace('Q', '')) - 1
+                if 0 <= question_idx < len(st.session_state['survey_questions']):
+                    question_text = st.session_state['survey_questions'][question_idx]['question']
+            
+            with st.expander(f"📋 {question_text[:80]}{'...' if len(question_text) > 80 else ''}"):
+                responses = df[col].dropna()
+                
+                if len(responses) > 0:
+                    # 전체 질문 텍스트 표시
+                    st.markdown(f"**질문**: {question_text}")
+                    st.markdown("---")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown("**통계 정보**")
+                        stats = {
+                            '평균': f"{responses.mean():.2f}",
+                            '중앙값': f"{responses.median():.1f}",
+                            '표준편차': f"{responses.std():.2f}",
+                            '최소값': f"{int(responses.min())}",
+                            '최대값': f"{int(responses.max())}"
+                        }
+                        
+                        for key, value in stats.items():
+                            st.write(f"• **{key}**: {value}")
+                    
+                    with col2:
+                        st.markdown("**응답 분포**")
+                        fig = px.histogram(
+                            df, 
+                            x=col,
+                            nbins=7,
+                            color_discrete_sequence=['#3B82F6']
+                        )
+                        fig.update_layout(
+                            xaxis_title="응답 점수",
+                            yaxis_title="응답자 수",
+                            showlegend=False
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+    
+    # 다운로드
+    st.markdown("---")
+    st.markdown("### 결과 다운로드")
+    
+    col1, col2, col3 = st.columns([1, 1, 1])
+    
+    with col2:
+        if st.session_state['survey_results']:
+            csv = st.session_state['survey_results'][0].to_csv(index=False, encoding='utf-8-sig')
+            st.download_button(
+                label="📥 CSV 다운로드",
+                data=csv,
+                file_name=f"survey_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+    
+    # 새로운 리서치 시작
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 1, 1])
+    
+    with col2:
+        if st.button("새로운 리서치 시작", type="primary", use_container_width=True):
+            reset_session_state()
+            st.session_state['step'] = 1
+            st.rerun()
+
+def main():
+    """메인 애플리케이션"""
+    # 로그인 체크
+    if 'authenticated' not in st.session_state:
+        st.session_state['authenticated'] = False
+    
+    # 페이지 설정
+    if 'page' not in st.session_state:
+        st.session_state['page'] = 'main'
+    
+    # 로그인 페이지
+    if not st.session_state['authenticated']:
+        show_login_page()
+        return
+    
+    # 관리자 페이지
+    if st.session_state['page'] == 'admin':
+        show_admin_page()
+        # 관리자 페이지에서 돌아가기 버튼
+        if st.button("← 메인으로 돌아가기"):
+            st.session_state['page'] = 'main'
+            st.rerun()
+        return
+    
+    # 메인 페이지
+    show_main_page()
+
+def show_login_page():
+    """로그인 페이지"""
+    st.markdown('<p style="font-size: 0.9rem; color: #6B7280; text-align: center; margin-bottom: 0.5rem;">LLM Customer Digital Twin</p>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">📊 美 디지털 트윈 소비자 조사</h1>', unsafe_allow_html=True)
+    
+    # 로그인 폼
+    st.markdown("---")
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.markdown("### 로그인")
+        
+        user_id = st.text_input("아이디", key="login_id")
+        user_pw = st.text_input("비밀번호", type="password", key="login_pw")
+        
+        login_button = st.button("로그인", type="primary", use_container_width=True)
+        
+        if login_button:
+            # 환경 변수에서 인증 정보 가져오기
+            auth_user_id = os.getenv("AUTH_USER_ID")
+            auth_user_pw = os.getenv("AUTH_USER_PW")
+            auth_admin_id = os.getenv("AUTH_ADMIN_ID")
+            auth_admin_pw = os.getenv("AUTH_ADMIN_PW")
+            if not all([auth_user_id, auth_user_pw, auth_admin_id, auth_admin_pw]):
+                st.error("인증 정보가 설정되지 않았습니다. 환경 변수를 확인하세요.")
+                st.stop()
+            
+            # 일반 사용자 로그인
+            if user_id == auth_user_id and user_pw == auth_user_pw:
+                st.session_state['authenticated'] = True
+                st.session_state['user_role'] = 'user'
+                st.rerun()
+            # 관리자 로그인
+            elif user_id == auth_admin_id and user_pw == auth_admin_pw:
+                st.session_state['authenticated'] = True
+                st.session_state['user_role'] = 'admin'
+                st.session_state['page'] = 'admin'
+                st.rerun()
+            else:
+                st.error("아이디 또는 비밀번호가 올바르지 않습니다.")
+
+def show_main_page():
+    """메인 페이지"""
+    # 헤더
+    st.markdown('<p style="font-size: 0.9rem; color: #6B7280; text-align: center; margin-bottom: 0.5rem;">LLM Customer Digital Twin</p>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">📊 美 디지털 트윈 소비자 조사</h1>', unsafe_allow_html=True)
+    st.markdown("**미국 소비자 디지털 트윈 데이터를 활용한 단계별 설문조사 플랫폼**")
+    
+    # 사용자 정보 및 설정 (메인 화면으로 이동)
+    col1, col2, col3 = st.columns([2, 1, 1])
+    
+    with col2:
+        user_role = st.session_state.get('user_role', 'user')
+        if user_role == 'admin':
+            st.success("👤 관리자 모드")
+        else:
+            st.info("👤 일반 사용자 모드")
+    
+    with col3:
+        if st.button("로그아웃"):
+            st.session_state['authenticated'] = False
+            reset_session_state()
+            st.rerun()
+    
+    # 관리자 페이지 버튼 (관리자만 접근 가능)
+    if user_role == 'admin':
+        col1, col2, col3 = st.columns([2, 1, 1])
+        with col2:
+            if st.button("🔐 관리자 페이지", use_container_width=True):
+                st.session_state['page'] = 'admin'
+                st.rerun()
+    
+    st.markdown("---")
+    
+    # API 키 (환경 변수에서 가져오기)
+    api_key = os.getenv("OPENAI_API_KEY")
+    
+    # Railway나 로컬에서 환경 변수가 설정되지 않은 경우
+    if not api_key:
+        st.warning("⚠️ OPENAI_API_KEY 환경 변수가 설정되지 않았습니다.")
+        st.info("""
+        **해결 방법:**
+        1. Railway 프로젝트 설정에서 환경 변수 추가
+        2. 로컬 실행 시 .env 파일 생성
+        """)
+        st.stop()
+    
+    os.environ["OPENAI_API_KEY"] = api_key
+    
+    # 시스템 초기화
+    try:
+        system = initialize_system(api_key)
+        if not system:
+            st.error("시스템 초기화에 실패했습니다.")
+            st.stop()
+    except Exception as e:
+        st.error(f"시스템 초기화 오류: {str(e)}")
+        st.stop()
+    
+    # 단계 설정
+    if 'step' not in st.session_state:
+        st.session_state['step'] = 1
+    
+    # 단계 표시기
+    render_step_indicator(st.session_state['step'] - 1)
+    
+    st.markdown("---")
+    
+    # 단계별 페이지
+    if st.session_state['step'] == 1:
+        step1_research_planning(system)
+    elif st.session_state['step'] == 2:
+        step2_audience_selection(system)
+    elif st.session_state['step'] == 3:
+        step3_survey_creation(system)
+    elif st.session_state['step'] == 4:
+        step4_results_analysis(system)
 
 if __name__ == "__main__":
     main()
-
-
 
